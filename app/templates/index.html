@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Agendas - {% if session['unidades'] %}{{ session['unidades'][session['selected_unit_id']] }}{% else %}WebDental{% endif %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .agenda-card { border: none; box-shadow: 0 4px 8px rgba(0,0,0,0.08); height: 100%; }
+        .agenda-header { background-color: #0d6efd; color: white; font-weight: bold; }
+        .slot { padding: 0.5rem; margin-bottom: 0.5rem; border-radius: 0.3rem; font-size: 0.85rem; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; border: 1px solid rgba(0,0,0,0.1); overflow: hidden; }
+        .slot:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .metric-card { margin-bottom: 1.5rem; border-left: 5px solid #0d6efd; }
+        .horizontal-scroll-container { display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 1.5rem; }
+        .agenda-column { flex: 0 0 320px; max-width: 320px; padding-left: 0.75rem; padding-right: 0.75rem; }
+        .progress { height: 20px; font-size: 0.8rem; }
+        .details-list-group-item { background-color: #f8f9fa; border-color: rgba(0,0,0,0.05); }
+        .truncate-text {
+            white-space: nowrap;      /* Impede que o texto quebre a linha */
+            overflow: hidden;         /* Esconde o texto que ultrapassa o limite */
+            text-overflow: ellipsis;  /* Adiciona "..." no final do texto cortado */
+            display: block;           /* Garante que o elemento ocupe a linha inteira */
+        }
+
+    </style>
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/774/774134.png" type="image/x-icon">
+</head>
+<body>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100">
+        <div id="updateToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"><div class="toast-header"><strong class="me-auto">Atualização de Cache</strong><button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button></div><div class="toast-body" id="toast-body-message"></div></div>
+    </div>
+
+    <div class="container-fluid my-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h3>Dashboard de Agendas</h3>
+                {% if session['unidades'] and session['unidades']|length > 1 %}
+                <div class="d-flex align-items-center">
+                    <a href="{{ url_for('main.switch_unit', direction='prev', selected_date=selected_date) }}" class="btn btn-sm btn-outline-secondary me-2" title="Unidade Anterior">
+                        <i class="bi bi-arrow-left-circle"></i>
+                    </a>
+                    <h5 class="text-muted mb-0">{{ session['unidades'][session['selected_unit_id']] }}</h5>
+                    <a href="{{ url_for('main.switch_unit', direction='next', selected_date=selected_date) }}" class="btn btn-sm btn-outline-secondary ms-2" title="Próxima Unidade">
+                        <i class="bi bi-arrow-right-circle"></i>
+                    </a>
+                </div>
+                {% elif session['unidades'] %}
+                 <h5 class="text-muted mb-0">{{ session['unidades'][session['selected_unit_id']] }}</h5>
+                {% endif %}
+            </div>
+            <div>
+                {% if session.get('role') == 'superadmin' %}
+                    <a href="#" class="btn btn-danger">Dashboard Superadmin</a>
+                {% endif %}
+                <a href="#" class="btn btn-info">Usuários</a>
+                <a href="#" class="btn btn-danger ms-2">Sair</a>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                
+                <form method="POST" action="{{ url_for('main.index') }}" class="d-flex align-items-center">
+                    <label for="selected_date" class="form-label me-2 mb-0">Selecione a Data:</label>
+                    <input type="date" id="selected_date" name="selected_date" value="{{ selected_date }}" class="form-control me-2" style="width: auto;">
+                    <button type="submit" class="btn btn-primary">Ver Agenda</button>
+                </form>
+                
+                <div class="d-flex align-items-center">
+                    {% if last_updated_formatted %}
+                        <span class="text-muted me-3" style="font-size: 0.85rem;" title="Data da última busca de dados na API">
+                            <i class="bi bi-clock-history"></i>
+                            Última atualização: <strong>{{ last_updated_formatted }}</strong>
+                        </span>
+                    {% endif %}
+                    <button id="force-update-single-btn" data-unit-id="{% if session['selected_unit_id'] %}{{ session['selected_unit_id'] }}{% endif %}" class="btn btn-outline-warning">Forçar Atualização</button>
+                </div>
+
+            </div>
+        </div>
+
+        {% if not agendas %}
+        <div class="alert alert-info text-center mt-4">
+            <h4><i class="bi bi-calendar-date"></i> Bem-vindo ao seu Dashboard!</h4>
+            <p class="lead">Por favor, selecione uma data acima e clique em "Ver Agenda" para carregar os dados.</p>
+        </div>
+        {% endif %}
+        
+        {% if summary_metrics %}
+        <div class="row mb-3">
+            <h4 class="mb-3">Resumo do Dia</h4>
+            <div class="col-lg-3 col-md-6"><div class="card metric-card"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted">Total Agendado</h6><h4 class="card-title">{{ summary_metrics.total_agendado_geral }}</h4></div></div></div>
+            <div class="col-lg-3 col-md-6"><div class="card metric-card" style="border-left-color: #198754;"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted">Taxa de Confirmação</h6><h4 class="card-title">{{ summary_metrics.percentual_confirmacao }}</h4><small>({{ summary_metrics.total_confirmado_geral }} confirmados)</small></div></div></div>
+            <div class="col-lg-3 col-md-6"><div class="card metric-card" style="border-left-color: #ffc107;"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted">Taxa de Ocupação</h6><h4 class="card-title">{{ summary_metrics.percentual_ocupacao }}</h4><small>({{ summary_metrics.total_ocupados }} de {{ summary_metrics.total_slots_disponiveis }})</small></div></div></div>
+            <div class="col-lg-3 col-md-6"><div class="card metric-card" style="border-left-color: #fd7e14;"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted">Taxa de Conversão</h6><h4 class="card-title">{{ conversion_data_for_selected_day.conversion_rate }}</h4><small>({{ conversion_data_for_selected_day.total_atendidos }} atendidos)</small></div></div></div>
+        </div>
+        {% endif %}
+
+        {% if table_headers %}
+        <div class="mb-4">
+            <p>
+                <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseResumoGeral" aria-expanded="false" aria-controls="collapseResumoGeral">
+                    <i class="bi bi-table"></i> Mostrar/Ocultar Resumo Geral
+                </button>
+            </p>
+            <div class="collapse" id="collapseResumoGeral">
+                <div class="card card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Status</th> 
+                                    {% for header in table_headers %}
+                                        <th scope="col">{{ header }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for i in range(table_index|length) %}
+                                <tr>
+                                    <th scope="row">{{ table_index[i] }}</th>
+                                    {% for cell in table_body[i] %}
+                                        <td>{{ cell }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if profissionais_stats_confirmacao %}
+        <div class="mb-4">
+            <p><button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRankings" aria-expanded="false" aria-controls="collapseRankings">Mostrar/Ocultar Rankings de Profissionais</button></p>
+            <div class="collapse show" id="collapseRankings">
+                <div class="row">
+                    </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        {% if agendas %}
+        <h4 class="mb-3">Agendas dos Profissionais</h4>
+        <div class="horizontal-scroll-container">
+                {% for profissional, agenda_data in agendas.items() %}
+                <div class="agenda-column">
+                    <div class="card agenda-card">
+                        <div class="card-header agenda-header"><a href="{{ agenda_url_template.format(agenda_data.id, selected_date) }}" target="_blank" class="text-white text-decoration-none">{{ profissional }}</a></div>
+                        <div class="card-body">
+                            {% for slot in agenda_data.horarios %}
+                            {% set height = (slot.duration / default_duration) * 5.5 %}
+                            <div class="slot" style="{{ status_styles.get(slot.status, status_styles.default) }}; height: {{ height }}rem; display: flex; flex-direction: column; justify-content: center;" 
+                                 data-bs-toggle="tooltip" data-bs-placement="top" title="Clique para ver detalhes" 
+                                 onclick="fetchDetails('{{ slot.appointmentId }}', '{{ slot.patientId }}')">
+                                <strong>{{ slot.formatedHour }} - {{ slot.status }}</strong>
+                                <small><strong class="truncate-text">{{ slot.patient if slot.patient else 'Disponível' }}</strong></small>
+                                {% if slot.observation %}
+                                <small class="text-muted fst-italic truncate-text">Obs: {{ slot.observation }}</small>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title" id="detailsModalLabel">Detalhes</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+                <div class="modal-body" id="modalBodyContent"><p>Carregando...</p></div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div>
+            </div>
+        </div>
+    </div>
+
+
+    
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Inicializa os tooltips do Bootstrap
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl); });
+
+        // --- Lógica do Modal de Detalhes ---
+        const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
+        const modalBody = document.getElementById('modalBodyContent');
+        const modalTitle = document.getElementById('detailsModalLabel');
+
+        async function fetchDetails(appointmentId, patientId) {
+            // Não faz nada se for um slot sem paciente ou um compromisso
+            if (patientId === 'None' || !patientId || patientId === 'COMPROMISSO') return;
+
+            modalTitle.textContent = "Carregando Detalhes...";
+            modalBody.innerHTML = '<div class="text-center p-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+            detailsModal.show();
+
+            const selectedDate = document.getElementById('selected_date').value;
+            let finalHtml = '';
+
+            try {
+                const response = await fetch(`/api/appointment_details/${appointmentId}?date=${selectedDate}&patientId=${patientId}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const paciente = data.original_data || {}; // Dados básicos do agendamento (nome, tel, etc)
+                    const funcionario = data.funcionario && data.funcionario.length > 0 ? data.funcionario[0] : null;
+                    
+                    modalTitle.textContent = `Detalhes de ${paciente.nome || 'Paciente'}`;
+
+                    // Seção de Informações do Paciente
+                    finalHtml += `<h5><i class="bi bi-person-fill text-primary"></i> Paciente</h5>`;
+                    finalHtml += `<ul class="list-group list-group-flush mb-4">`;
+                    finalHtml += `<li class="list-group-item details-list-group-item"><strong>Telefone:</strong> ${paciente.num_telefone1 || 'N/A'}</li>`;
+                    finalHtml += `<li class="list-group-item details-list-group-item"><strong>CPF:</strong> ${paciente.cpf || 'N/A'}</li>`;
+                    
+                    if (funcionario && funcionario.nm_prestador) {
+                        finalHtml += `<li class="list-group-item details-list-group-item"><strong>Agendado por:</strong> ${funcionario.nm_prestador}</li>`;
+                    }
+                    
+                    // --- CORREÇÃO APLICADA AQUI ---
+                    // Agora busca a data de criação do lugar certo (paciente.data_criado)
+                    if (paciente && paciente.data_criado) {
+                        const dataAgendamento = new Date(paciente.data_criado).toLocaleString('pt-BR');
+                        finalHtml += `<li class="list-group-item details-list-group-item"><strong>Data do Agendamento:</strong> ${dataAgendamento}</li>`;
+                    }
+                    // --- FIM DA CORREÇÃO ---
+
+                    finalHtml += `<li class="list-group-item details-list-group-item"><strong>Observação Geral:</strong> ${paciente.observacao || 'N/A'}</li>`;
+                    finalHtml += `</ul>`;
+
+                    // Seção de Procedimentos (continua a mesma)
+                    if (data.procedimentos_agenda && data.procedimentos_agenda.length > 0) {
+                        finalHtml += `<h5><i class="bi bi-list-check text-primary"></i> Procedimentos Agendados</h5>`;
+                        finalHtml += `<table class="table table-sm"><thead><tr><th>Procedimento</th><th>Região</th><th>Status</th><th class="text-end">Valor</th></tr></thead><tbody>`;
+                        
+                        let valorTotal = 0;
+                        data.procedimentos_agenda.forEach(proc => {
+                            const valor = parseFloat(proc.total) || 0;
+                            valorTotal += valor;
+                            finalHtml += `<tr>
+                                <td>${proc.nm_intervencao}</td>
+                                <td>${proc.regiao}</td>
+                                <td><span class="badge ${proc.status_interv === 'Aprovado' ? 'bg-success' : 'bg-warning'}">${proc.status_interv}</span></td>
+                                <td class="text-end">R$ ${valor.toFixed(2).replace('.', ',')}</td>
+                            </tr>`;
+                        });
+
+                        finalHtml += `<tr class="table-group-divider"><td colspan="3" class="text-end"><strong>Total</strong></td><td class="text-end"><strong>R$ ${valorTotal.toFixed(2).replace('.', ',')}</strong></td></tr>`;
+                        finalHtml += `</tbody></table>`;
+                    }
+
+                } else {
+                    const errorData = await response.json();
+                    finalHtml = `<p class="text-center text-danger">${errorData.error || 'Erro ao carregar detalhes.'}</p>`;
+                }
+            } catch (e) {
+                console.error("Erro no fetch do agendamento:", e);
+                finalHtml = '<p class="text-center text-danger">Não foi possível carregar os detalhes do agendamento.</p>';
+            }
+            
+            modalBody.innerHTML = finalHtml;
+        }
+    </script>
+
+
+
+</body>
+
+</html>
