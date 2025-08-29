@@ -35,75 +35,65 @@ def index():
     # Define a duração padrão de um slot (em minutos)
     default_duration = 15
 
-    if request.method == 'POST':
-        try:
-            api_data = services.get_webdental_data(
-                username=os.getenv("USUARIO_ODONTO"),
-                password=os.getenv("SENHA_ODONTO"),
-                target_unit_name=session['target_unit_name'],
-                selected_date_str=selected_date
-            )
+    try:
+        api_data = services.get_webdental_data(
+            username=os.getenv("USUARIO_ODONTO"),
+            password=os.getenv("SENHA_ODONTO"),
+            target_unit_name=session['target_unit_name'],
+            selected_date_str=selected_date
+        )
+        
+        session['unidades'] = api_data['unidades']
+        for unit_id, unit_name in api_data['unidades'].items():
+            if unit_name == session['target_unit_name']:
+                session['selected_unit_id'] = unit_id
+                break
+
+        agendas = api_data['agendas_completas']
+        
+        all_appointments_for_df = []
+        status_map = {
+            "O": "Atendido (Obs)", "B": "Compareceu",
+            "E": "Pagamento Realizado", "R": "Confirmado", "A": "Atendido com procedimento", None: "Agendado"
+        }
+
+        for prof_nome, agenda_data in agendas.items():
+            for slot in agenda_data['horarios']:
+                status_bruto = slot.get('situacao')
+                if slot.get('cd_paciente') == 'COMPROMISSO':
+                    status_legivel = 'Compromisso'
+                    paciente = 'Compromisso'
+                else:
+                    status_legivel = "Faltou" if slot.get('faltou') == 'F' else status_map.get(status_bruto, "Disponível" if status_bruto == "Disponível" else f"Status '{status_bruto}'")
+                    paciente = slot.get('nome', '')
+
+                slot['status'] = status_legivel
+                slot['formatedHour'] = slot.get('hora_agenda', '')
+                slot['patient'] = paciente
+                slot['observation'] = slot.get('observacao', '')
+                slot['appointmentId'] = slot.get('chave', '')
+                slot['patientId'] = slot.get('cd_paciente', '')
+                slot['duration'] = int(slot.get('duracao_agenda', default_duration))
+                slot['profissional_nome'] = prof_nome
+                all_appointments_for_df.append(slot)
+
+        if all_appointments_for_df:
+            df = pd.DataFrame(all_appointments_for_df)
+            df_ocupados = df[df['status'] != 'Disponível']
             
-            session['unidades'] = api_data['unidades']
-            for unit_id, unit_name in api_data['unidades'].items():
-                if unit_name == session['target_unit_name']:
-                    session['selected_unit_id'] = unit_id
-                    break
+            if not df_ocupados.empty:
+                summary_table = pd.crosstab(df_ocupados['status'], df_ocupados['profissional_nome'])
+                summary_table['Total'] = summary_table.sum(axis=1)
+                table_headers = summary_table.columns.tolist()
+                table_index = summary_table.index.tolist()
+                table_body = summary_table.values.tolist()
 
-            agendas = api_data['agendas_completas']
-            
-            all_appointments_for_df = []
-            status_map = {
-                "O": "Atendido (Obs)", 
-                "B": "Compareceu",
-                "E": "Pagamento Realizado", 
-                "R": "Confirmado",
-                "A": "Atendido com procedimento ", 
-                None: "Agendado"
-            }
+        last_updated_formatted = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
 
-            for prof_nome, agenda_data in agendas.items():
-                for slot in agenda_data['horarios']:
-
-                    status_bruto = slot.get('situacao')
-                    
-                    # 1. Define o status e o nome do paciente
-                    if slot.get('cd_paciente') == 'COMPROMISSO':
-                        status_legivel = 'Compromisso'
-                        paciente = 'Compromisso' # Nome principal será "Compromisso"
-                    else:
-                        status_legivel = "Faltou" if slot.get('faltou') == 'F' else status_map.get(status_bruto, "Disponível" if status_bruto == "Disponível" else f"Status '{status_bruto}'")
-                        paciente = slot.get('nome', '')
-                    
-                    
-                    slot['status'] = status_legivel
-                    slot['formatedHour'] = slot.get('hora_agenda', '')
-                    slot['patient'] = paciente
-                    slot['observation'] = slot.get('observacao', '') # Passa a observação original para TODOS os slots
-                    slot['appointmentId'] = slot.get('chave', '')
-                    slot['patientId'] = slot.get('cd_paciente', '')
-                    slot['duration'] = int(slot.get('duracao_agenda', default_duration))
-                    slot['profissional_nome'] = prof_nome
-
-
-                    all_appointments_for_df.append(slot)
-
-            if all_appointments_for_df:
-                df = pd.DataFrame(all_appointments_for_df)
-                df_ocupados = df[df['status'] != 'Disponível']
-                
-                if not df_ocupados.empty:
-                    summary_table = pd.crosstab(df_ocupados['status'], df_ocupados['profissional_nome'])
-                    summary_table['Total'] = summary_table.sum(axis=1)
-                    table_headers = summary_table.columns.tolist()
-                    table_index = summary_table.index.tolist()
-                    table_body = summary_table.values.tolist()
-
-            last_updated_formatted = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-
-        except Exception as e:
-            print(f"Ocorreu um erro ao buscar ou processar os dados: {e}")
-            
+    except Exception as e:
+        print(f"Ocorreu um erro ao buscar ou processar os dados: {e}")
+        # Futuramente, podemos passar uma mensagem de erro para o template aqui
+        
     return render_template('index.html', 
                            selected_date=selected_date,
                            last_updated_formatted=last_updated_formatted,
