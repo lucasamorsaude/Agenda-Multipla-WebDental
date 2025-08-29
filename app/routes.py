@@ -11,7 +11,9 @@ bp = Blueprint('main', __name__)
 @bp.route('/', methods=['GET', 'POST'])
 def index():
     agendas = None
-    summary_metrics = {}
+    summary_metrics = None
+    conversion_data_for_selected_day = None
+    profissionais_stats_confirmacao, profissionais_stats_ocupacao, profissionais_stats_conversao = [], [], []
     table_headers, table_index, table_body = [], [], []
     last_updated_formatted = None
     
@@ -88,10 +90,56 @@ def index():
             if all_appointments_for_df:
                 df = pd.DataFrame(all_appointments_for_df)
                 df_ocupados = df[df['status'] != 'Disponível']
-                if not df_ocupados.empty:
-                    summary_table = pd.crosstab(df_ocupados['status'], df_ocupados['profissional_nome'])
-                    summary_table['Total'] = summary_table.sum(axis=1)
-                    table_headers, table_index, table_body = summary_table.columns.tolist(), summary_table.index.tolist(), summary_table.values.tolist()
+                
+                total_slots_disponiveis = len(df)
+                total_ocupados = len(df_ocupados)
+                total_confirmado_geral = len(df_ocupados[df_ocupados['status'] == 'Confirmado'])
+                
+                # Define os status que contam como "atendido" para a conversão
+                status_atendido = ['Atendido (Obs)', 'Atendido com procedimento', 'Pagamento Realizado']
+                total_atendidos = len(df_ocupados[df_ocupados['status'].isin(status_atendido)])
+
+                summary_metrics = {
+                    'total_agendado_geral': total_ocupados,
+                    'total_confirmado_geral': total_confirmado_geral,
+                    'percentual_confirmacao': f"{(total_confirmado_geral / total_ocupados * 100):.0f}%" if total_ocupados > 0 else "0%",
+                    'total_ocupados': total_ocupados,
+                    'total_slots_disponiveis': total_slots_disponiveis,
+                    'percentual_ocupacao': f"{(total_ocupados / total_slots_disponiveis * 100):.0f}%" if total_slots_disponiveis > 0 else "0%"
+                }
+                conversion_data_for_selected_day = {
+                    'total_atendidos': total_atendidos,
+                    'conversion_rate': f"{(total_atendidos / total_ocupados * 100):.0f}%" if total_ocupados > 0 else "0%"
+                }
+
+                # 2. RANKINGS POR PROFISSIONAL
+                stats_list = []
+                # Agrupa os dados por profissional para calcular as métricas individuais
+                for profissional, group in df.groupby('profissional_nome'):
+                    total_slots_prof = len(group)
+                    ocupados_prof = len(group[group['status'] != 'Disponível'])
+                    confirmados_prof = len(group[group['status'] == 'Confirmado'])
+                    atendidos_prof = len(group[group['status'].isin(status_atendido)])
+                    
+                    taxa_conf_num = (confirmados_prof / ocupados_prof * 100) if ocupados_prof > 0 else 0
+                    taxa_ocup_num = (ocupados_prof / total_slots_prof * 100) if total_slots_prof > 0 else 0
+                    taxa_conv_num = (atendidos_prof / ocupados_prof * 100) if ocupados_prof > 0 else 0
+
+                    stats_list.append({
+                        'profissional': profissional,
+                        'taxa_confirmacao': f"{taxa_conf_num:.0f}%",
+                        'percent_confirmacao': taxa_conf_num,
+                        'taxa_ocupacao': f"{taxa_ocup_num:.0f}%",
+                        'percent_ocupacao': taxa_ocup_num,
+                        'taxa_conversao': f"{taxa_conv_num:.0f}%",
+                        'percent_conversao': taxa_conv_num
+                    })
+
+                # Ordena cada ranking do maior para o menor
+                profissionais_stats_confirmacao = sorted(stats_list, key=lambda x: x['percent_confirmacao'], reverse=True)
+                profissionais_stats_ocupacao = sorted(stats_list, key=lambda x: x['percent_ocupacao'], reverse=True)
+                profissionais_stats_conversao = sorted(stats_list, key=lambda x: x['percent_conversao'], reverse=True)
+                
 
 
         except Exception as e:
@@ -99,11 +147,13 @@ def index():
             
     return render_template('index.html', 
                            selected_date=selected_date, last_updated_formatted=last_updated_formatted,
-                           summary_metrics={}, agendas=agendas, table_headers=table_headers,
-                           table_index=table_index, table_body=table_body, conversion_data_for_selected_day={},
+                           summary_metrics=summary_metrics, agendas=agendas, table_headers=table_headers,
+                           table_index=table_index, table_body=table_body, conversion_data_for_selected_day=conversion_data_for_selected_day,
                            status_styles=status_styles, default_duration=default_duration,
-                           profissionais_stats_confirmacao=[], profissionais_stats_ocupacao=[],
-                           profissionais_stats_conversao=[], agenda_url_template="http://exemplo.com/{}/{}")
+                           profissionais_stats_confirmacao=profissionais_stats_confirmacao,
+                           profissionais_stats_ocupacao=profissionais_stats_ocupacao,
+                           profissionais_stats_conversao=profissionais_stats_conversao,
+                           agenda_url_template="http://exemplo.com/{}/{}")
 
 # --- FUNÇÃO ATUALIZADA ---
 @bp.route('/switch_unit/<direction>')
