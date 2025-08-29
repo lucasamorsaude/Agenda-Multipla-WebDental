@@ -270,6 +270,48 @@
             
             modalBody.innerHTML = finalHtml;
         }
+
+        const toastEl = document.getElementById('updateToast');
+        const toast = new bootstrap.Toast(toastEl);
+        const toastBody = document.getElementById('toast-body-message');
+
+        const updateSingleButton = document.getElementById('force-update-single-btn');
+        if (updateSingleButton) {
+            updateSingleButton.addEventListener('click', function() {
+                const button = this;
+                const originalButtonText = button.textContent;
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Atualizando...';
+                
+                const formData = new FormData();
+                formData.append('selected_date_force_update', document.getElementById('selected_date').value);
+                // O url_for aqui vai funcionar porque o Flask renderiza o template com o endereço correto
+                fetch("{{ url_for('cache.force_update_day_cache_sync') }}", {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    toastBody.textContent = data.message;
+                    toast.show();
+                    if (data.status === 'success') {
+                        // Espera 2 segundos para o usuário ler a mensagem e recarrega a página
+                        setTimeout(() => { window.location.reload(); }, 2000);
+                    } else {
+                        // Se der erro, reativa o botão
+                        button.disabled = false;
+                        button.textContent = originalButtonText;
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao forçar atualização:', error);
+                    toastBody.textContent = 'Erro de comunicação ao tentar atualizar.';
+                    toast.show();
+                    button.disabled = false;
+                    button.textContent = originalButtonText;
+                });
+            });
+        }
     </script>
 
 

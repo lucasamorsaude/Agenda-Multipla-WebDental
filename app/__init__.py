@@ -18,4 +18,7 @@ def create_app():
     from . import api
     app.register_blueprint(api.bp)
 
+    from . import cache
+    app.register_blueprint(cache.bp)
+
     return app
