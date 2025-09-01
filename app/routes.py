@@ -2,6 +2,7 @@
 
 import os
 from flask import Blueprint, render_template, session, request, redirect, url_for
+from flask_login import login_required
 from datetime import datetime
 import pandas as pd
 from . import services 
@@ -9,6 +10,7 @@ from . import services
 bp = Blueprint('main', __name__)
 
 @bp.route('/', methods=['GET', 'POST'])
+@login_required
 def index():
     agendas = None
     summary_metrics = None
@@ -157,6 +159,7 @@ def index():
 
 # --- FUNÇÃO ATUALIZADA ---
 @bp.route('/switch_unit/<direction>')
+@login_required
 def switch_unit(direction):
     """Muda a unidade e redireciona para a home, MANTENDO A DATA e seguindo a ORDEM ALFABÉTICA."""
     selected_date = request.args.get('selected_date')

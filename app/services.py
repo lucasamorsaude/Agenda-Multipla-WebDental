@@ -42,32 +42,84 @@ def _login_and_get_units(session, username, password, target_unit_name):
     return target_unit_id, all_units
 
 def _build_dynamic_schedule(work_shifts, booked_appointments, medico_chave):
-    # ... (esta função continua a mesma) ...
+    """
+    VERSÃO FINAL: Gera a grade de horários usando o "Método do Grid",
+    e aplica um filtro inteligente para mostrar slots disponíveis padrão e "encaixes".
+    """
     final_schedule = []
     if not work_shifts:
         return final_schedule
-    work_shifts.sort(key=lambda x: x.get('horario_inicio', ''))
-    booked_slots_map = {slot['hora_agenda']: slot for slot in booked_appointments}
+
     default_duration = int(work_shifts[0].get('duracao', 15))
+    GRID_RESOLUTION_MINUTES = 5
+    
+    # 1. CRIA O GRID COMPLETO (sem alterações)
+    full_day_grid = {}
     for shift in work_shifts:
         try:
-            start_time_obj = datetime.strptime(shift['horario_inicio'], '%H:%M:%S').time()
-            end_time_obj = datetime.strptime(shift['horario_fim'], '%H:%M:%S').time()
-            current_time = datetime.combine(datetime.today(), start_time_obj)
-            end_time = datetime.combine(datetime.today(), end_time_obj)
+            start_time = datetime.strptime(shift['horario_inicio'], '%H:%M:%S')
+            end_time = datetime.strptime(shift['horario_fim'], '%H:%M:%S')
+            current_time = start_time
             while current_time < end_time:
                 time_str = current_time.strftime('%H:%M')
-                appointment = booked_slots_map.get(time_str)
-                if appointment:
-                    final_schedule.append(appointment)
-                    duration = int(appointment.get('duracao_agenda', default_duration))
-                    current_time += timedelta(minutes=duration)
-                else:
-                    final_schedule.append({'hora_agenda': time_str, 'situacao': 'Disponível', 'nome': '', 'chave': f"vago_{medico_chave}_{time_str}", 'cd_paciente': None})
-                    current_time += timedelta(minutes=default_duration)
-        except (ValueError, TypeError) as e:
-            print(f"Aviso: Ignorando turno com formato inválido. Erro: {e}")
+                full_day_grid[time_str] = {
+                    'hora_agenda': time_str, 'situacao': 'Disponível', 'nome': '',
+                    'chave': f"vago_{medico_chave}_{time_str}", 'cd_paciente': None,
+                    'duracao_agenda': GRID_RESOLUTION_MINUTES
+                }
+                current_time += timedelta(minutes=GRID_RESOLUTION_MINUTES)
+        except (ValueError, TypeError):
             continue
+
+    # 2. "COLA" OS AGENDAMENTOS REAIS (sem alterações)
+    for appointment in booked_appointments:
+        start_time_str = appointment.get('hora_agenda')
+        duration = int(appointment.get('duracao_agenda', default_duration))
+        if start_time_str in full_day_grid:
+            full_day_grid[start_time_str] = appointment
+            slots_to_occupy = duration // GRID_RESOLUTION_MINUTES
+            start_dt = datetime.strptime(start_time_str, '%H:%M')
+            for i in range(1, slots_to_occupy):
+                next_slot_time = (start_dt + timedelta(minutes=i * GRID_RESOLUTION_MINUTES)).strftime('%H:%M')
+                if next_slot_time in full_day_grid:
+                    full_day_grid[next_slot_time] = 'OCCUPIED'
+
+    # 3. MONTA A LISTA FINAL COM O FILTRO INTELIGENTE
+    sorted_times = sorted(full_day_grid.keys())
+    for i, time_key in enumerate(sorted_times):
+        slot = full_day_grid[time_key]
+        
+        # Pula os slots que estão no meio de um agendamento longo
+        if slot == 'OCCUPIED':
+            continue
+
+        # Se o slot for um agendamento real, sempre adiciona ele
+        if slot.get('cd_paciente') is not None:
+            final_schedule.append(slot)
+            continue
+
+        # Se for um slot disponível, aplica o filtro inteligente
+        if slot.get('situacao') == 'Disponível':
+            minutos = int(time_key.split(':')[1])
+            
+            # REGRA 1: É um horário padrão (múltiplo de 15 min)?
+            is_standard_slot = (minutos % default_duration == 0)
+            
+            # REGRA 2: Ele está logo antes de um agendamento real?
+            is_before_booked_slot = False
+            # Verifica se não é o último item da lista para evitar erro
+            if i + 1 < len(sorted_times):
+                next_time_key = sorted_times[i+1]
+                next_slot = full_day_grid[next_time_key]
+                # O próximo slot é um agendamento real (e não 'OCCUPIED' ou 'Disponível')?
+                if next_slot != 'OCCUPIED' and next_slot.get('cd_paciente') is not None:
+                    is_before_booked_slot = True
+            
+            # Se qualquer uma das regras for verdadeira, adiciona o slot
+            if is_standard_slot or is_before_booked_slot:
+                slot['duracao_agenda'] = default_duration
+                final_schedule.append(slot)
+            
     return final_schedule
 
 def get_webdental_data(username, password, target_unit_name, selected_date_str):
@@ -98,8 +150,18 @@ def get_webdental_data(username, password, target_unit_name, selected_date_str):
         data_formatada_br = selected_date.strftime("%d/%m/%Y")
         data_formatada_sys = selected_date.strftime("%Y-%m-%d")
         dia_semana = selected_date.isoweekday() % 7 + 1
+        dia_semana_api = selected_date.isoweekday() % 7 + 1
         
-        payload_medicos = {"dia_semana": dia_semana, "data_a": data_formatada_br, "data_a_formt": data_formatada_sys, "data_c": data_formatada_br, "cd_filial": CD_FILIAL, "chaveUsuario": CHAVE_USUARIO, "data_Hoje": data_formatada_br, "data_Hoje_System": data_formatada_sys, "rotaAcao": "AgendaAbrir", "unidade": unit_id}
+        payload_medicos = {"dia_semana": dia_semana, 
+                           "data_a": data_formatada_br, 
+                           "data_a_formt": data_formatada_sys, 
+                           "data_c": data_formatada_br, 
+                           "cd_filial": CD_FILIAL, 
+                           "chaveUsuario": CHAVE_USUARIO, 
+                           "data_Hoje": data_formatada_br, 
+                           "data_Hoje_System": data_formatada_sys, 
+                           "rotaAcao": "AgendaAbrir", 
+                           "unidade": unit_id}
         
         medicos = []
         try:
@@ -121,17 +183,30 @@ def get_webdental_data(username, password, target_unit_name, selected_date_str):
             medico_nome = medico['nm_prestador'].strip()
 
             payload_horarios = {"cd_prestador": medico_chave, "data_fim": data_formatada_sys}
+            response_horarios = s.post(f"{URL_API_BASE}getCadeirasPrestador", json=payload_horarios)
+            regras_de_trabalho = response_horarios.json()
+
+            # --- FILTRO INTELIGENTE DE TURNOS DE TRABALHO ---
             turnos_de_trabalho = []
-            try:
-                response_horarios = s.post(f"{URL_API_BASE}getCadeirasPrestador", json=payload_horarios)
-                horarios_data = response_horarios.json()
-                turnos_de_trabalho = [t for t in horarios_data if t.get('data_inicio') == data_formatada_sys]
-            except requests.exceptions.JSONDecodeError:
-                print(f"  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                print(f"  !!! ERRO FATAL NA ETAPA 3.1: BUSCA DE HORÁRIOS para {medico_nome} !!!")
-                print(f"  !!! A API retornou algo que não é JSON. Resposta: {response_horarios.text[:500]}")
-                print(f"  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                continue # Pula para o próximo médico
+            for regra in regras_de_trabalho:
+                try:
+                    # Converte as datas da regra para objetos datetime
+                    data_inicio_regra = datetime.strptime(regra['data_inicio'], '%Y-%m-%d')
+                    data_fim_regra = datetime.strptime(regra['data_fim'], '%Y-%m-%d')
+                    
+                    # Condição 1: A data selecionada está dentro do período da regra?
+                    if not (data_inicio_regra <= selected_date <= data_fim_regra):
+                        continue # Se não, pula para a próxima regra
+
+                    # Condição 2: O dia da semana bate?
+                    if regra['dia_semana'] != dia_semana_api:
+                        continue # Se não, pula para a próxima regra
+                    
+                    # Se passou nas duas condições, esta regra é válida para hoje!
+                    turnos_de_trabalho.append(regra)
+                except (ValueError, TypeError, KeyError):
+                    # Ignora regras com formato de data inválido ou chaves faltando
+                    continue
             
             payload_agenda = {"cadeira": {"cadeira": 4, "cadeiraValue": 1, "cadeiraValueSelect": 0}, "cd_filial": CD_FILIAL, "chaveUsuario": CHAVE_USUARIO, "data_Hoje": data_formatada_br, "data_Hoje_System": data_formatada_sys, "data_a": data_formatada_br, "data_a_formt": data_formatada_sys, "data_c": data_formatada_br, "dia_semana": dia_semana, "filial": int(CD_FILIAL), "medico": medico_chave, "medicosChave": [m['chave'] for m in medicos], "rotaAcao": "agendaSelecDr", "unidade": unit_id}
             
@@ -147,7 +222,13 @@ def get_webdental_data(username, password, target_unit_name, selected_date_str):
                 print(f"  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 # Continua mesmo com erro, para a agenda do médico aparecer vazia
             
-            final_schedule_slots = _build_dynamic_schedule(turnos_de_trabalho, agendamentos, medico_chave)
+            if not turnos_de_trabalho and agendamentos:
+                print(f"AVISO: Nenhum turno de trabalho encontrado para {medico_nome}, mas existem agendamentos. Exibindo apenas os agendamentos.")
+                # Usa apenas a lista de agendamentos reais, sem os horários vagos.
+                final_schedule_slots = agendamentos
+            else:
+                # Se há turnos de trabalho, usa a lógica normal para criar a grade completa.
+                final_schedule_slots = _build_dynamic_schedule(turnos_de_trabalho, agendamentos, medico_chave)
             all_professionals_schedule[medico_nome] = {'id': medico_chave, 'horarios': final_schedule_slots}
         
         fresh_data = {"agendas_completas": all_professionals_schedule, "unidades": all_units}
@@ -195,3 +276,24 @@ def fetch_full_appointment_details(session, appointment_id, patient_id, selected
     response.raise_for_status()
     
     return response.json()
+
+
+def get_all_available_units(username, password):
+    """
+    Faz um login rápido apenas para buscar a lista completa de unidades disponíveis.
+    """
+    print("[DEBUG] Buscando a lista completa de unidades na API...")
+    with requests.Session() as s:
+        s.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'X-Requested-With': 'XMLHttpRequest'
+        })
+        s.get(URL_LOGIN_PAGE)
+        payload_units = {'ajax': 'true', 'usuario': username, 'senha': password, 'bd': 'clinicatodos'}
+        response_units = s.post(URL_GET_UNITS, data=payload_units)
+        response_units.raise_for_status()
+        units_data = response_units.json()
+        
+        # Converte para um dicionário limpo de {ID: Nome}
+        all_units = {u['value']: u['name'].encode('latin1').decode('unicode_escape') for u in units_data}
+        return all_units

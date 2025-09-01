@@ -55,8 +55,8 @@
                 {% if session.get('role') == 'superadmin' %}
                     <a href="#" class="btn btn-danger">Dashboard Superadmin</a>
                 {% endif %}
-                <a href="#" class="btn btn-info">Usuários</a>
-                <a href="#" class="btn btn-danger ms-2">Sair</a>
+                <a href="{{ url_for('user.user_panel') }}" class="btn btn-info">Usuários</a>
+                <a href="{{ url_for('auth.logout') }}" class="btn btn-danger ms-2">Sair</a>
             </div>
         </div>
         <div class="card mb-4">
