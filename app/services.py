@@ -238,6 +238,65 @@ def get_webdental_data(username, password, target_unit_name, selected_date_str):
         print("\n[DEBUG] ETAPA 4: Novos dados salvos no cache.")
         return data_to_cache_and_return
 
+
+def get_webdental_data_live(username, password, target_unit_name, selected_date_str):
+    """
+    Versão da busca de dados que IGNORA o cache e sempre vai direto na API.
+    Usada para garantir que os detalhes do modal estejam sempre atualizados.
+    """
+    print(f"BUSCA AO VIVO (sem cache) para {target_unit_name} na data {selected_date_str}...")
+    
+    # Esta função é uma cópia da 'get_webdental_data', mas sem o bloco 'if cached_doc.exists:'
+    selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d')
+    with requests.Session() as s:
+        s.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'X-Requested-With': 'XMLHttpRequest'
+        })
+        
+        unit_id, all_units = _login_and_get_units(s, username, password, target_unit_name)
+        
+        data_formatada_br = selected_date.strftime("%d/%m/%Y")
+        data_formatada_sys = selected_date.strftime("%Y-%m-%d")
+        dia_semana = selected_date.isoweekday() % 7 + 1
+        
+        payload_medicos = {
+            "dia_semana": dia_semana, "data_a": data_formatada_br, "data_a_formt": data_formatada_sys,
+            "data_c": data_formatada_br, "cd_filial": CD_FILIAL, "chaveUsuario": CHAVE_USUARIO,
+            "data_Hoje": data_formatada_br, "data_Hoje_System": data_formatada_sys,
+            "rotaAcao": "AgendaAbrir", "unidade": unit_id
+        }
+        
+        response_medicos = s.post(f"{URL_API_BASE}GetSelectMedicos", json=payload_medicos)
+        medicos = response_medicos.json()['dados']
+        medicos.sort(key=lambda x: x.get('nm_prestador', '').strip())
+
+        all_professionals_schedule = {}
+        for medico in medicos:
+            medico_chave = medico['chave']
+            medico_nome = medico['nm_prestador'].strip()
+            payload_horarios = {"cd_prestador": medico_chave, "data_fim": data_formatada_sys}
+            response_horarios = s.post(f"{URL_API_BASE}getCadeirasPrestador", json=payload_horarios)
+            turnos_de_trabalho = [t for t in response_horarios.json() if t.get('data_inicio') == data_formatada_sys]
+            payload_agenda = {
+                "cadeira": {"cadeira": 4, "cadeiraValue": 1, "cadeiraValueSelect": 0}, "cd_filial": CD_FILIAL,
+                "chaveUsuario": CHAVE_USUARIO, "data_Hoje": data_formatada_br, "data_Hoje_System": data_formatada_sys,
+                "data_a": data_formatada_br, "data_a_formt": data_formatada_sys, "data_c": data_formatada_br,
+                "dia_semana": dia_semana, "filial": int(CD_FILIAL), "medico": medico_chave,
+                "medicosChave": [m['chave'] for m in medicos], "rotaAcao": "agendaSelecDr", "unidade": unit_id
+            }
+            response_agenda = s.post(f"{URL_API_BASE}GetAgendaDia", json=payload_agenda)
+            agendamentos = sorted(response_agenda.json().get('dados', []), key=lambda x: x.get('hora_agenda', ''))
+            final_schedule_slots = _build_dynamic_schedule(turnos_de_trabalho, agendamentos, medico_chave)
+            all_professionals_schedule[medico_nome] = {
+                'id': medico_chave,
+                'horarios': final_schedule_slots
+            }
+        
+        return {
+            "agendas_completas": all_professionals_schedule,
+            "unidades": all_units
+        }
 # --- FUNÇÃO QUE FALTAVA ADICIONADA AQUI ---
 def fetch_single_appointment_details(username, password, target_unit_name, selected_date_str, appointment_id_to_find):
     """

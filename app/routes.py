@@ -6,6 +6,7 @@ from flask_login import login_required
 from datetime import datetime
 import pandas as pd
 from . import services 
+from zoneinfo import ZoneInfo
 
 bp = Blueprint('main', __name__)
 
@@ -56,10 +57,16 @@ def index():
             timestamp = result['timestamp']
             
             if timestamp:
-                local_timestamp = timestamp.astimezone(None)
+                # Cria um objeto para o nosso fuso horário
+                sao_paulo_tz = ZoneInfo("America/Sao_Paulo")
+                
+                # Converte o timestamp (que está em UTC) para o fuso horário de São Paulo
+                local_timestamp = timestamp.astimezone(sao_paulo_tz)
+                
+                # Formata a data e hora já convertida
                 last_updated_formatted = local_timestamp.strftime('%d/%m/%Y %H:%M:%S')
             
-            session['unidades'] = api_data['unidades']
+            # session['unidades'] = api_data['unidades']
             for unit_id, unit_name in api_data['unidades'].items():
                 if unit_name == session['target_unit_name']:
                     session['selected_unit_id'] = unit_id
@@ -88,6 +95,18 @@ def index():
                         'duration': int(slot.get('duracao_agenda', default_duration)), 'profissional_nome': prof_nome
                     })
                     all_appointments_for_df.append(slot)
+
+
+            if all_appointments_for_df:
+                df = pd.DataFrame(all_appointments_for_df)
+                df_ocupados = df[df['status'] != 'Disponível']
+                
+                if not df_ocupados.empty:
+                    summary_table = pd.crosstab(df_ocupados['status'], df_ocupados['profissional_nome'])
+                    summary_table['Total'] = summary_table.sum(axis=1)
+                    table_headers = summary_table.columns.tolist()
+                    table_index = summary_table.index.tolist()
+                    table_body = summary_table.values.tolist()
 
             if all_appointments_for_df:
                 df = pd.DataFrame(all_appointments_for_df)
@@ -137,6 +156,8 @@ def index():
                         'percent_conversao': taxa_conv_num
                     })
 
+                
+
                 # Ordena cada ranking do maior para o menor
                 profissionais_stats_confirmacao = sorted(stats_list, key=lambda x: x['percent_confirmacao'], reverse=True)
                 profissionais_stats_ocupacao = sorted(stats_list, key=lambda x: x['percent_ocupacao'], reverse=True)
@@ -148,10 +169,16 @@ def index():
             print(f"Ocorreu um erro ao buscar ou processar os dados: {e}")
             
     return render_template('index.html', 
-                           selected_date=selected_date, last_updated_formatted=last_updated_formatted,
-                           summary_metrics=summary_metrics, agendas=agendas, table_headers=table_headers,
-                           table_index=table_index, table_body=table_body, conversion_data_for_selected_day=conversion_data_for_selected_day,
-                           status_styles=status_styles, default_duration=default_duration,
+                           selected_date=selected_date, 
+                           last_updated_formatted=last_updated_formatted,
+                           summary_metrics=summary_metrics, 
+                           agendas=agendas, 
+                           table_headers=table_headers,
+                           table_index=table_index, 
+                           table_body=table_body, 
+                           conversion_data_for_selected_day=conversion_data_for_selected_day,
+                           status_styles=status_styles, 
+                           default_duration=default_duration,
                            profissionais_stats_confirmacao=profissionais_stats_confirmacao,
                            profissionais_stats_ocupacao=profissionais_stats_ocupacao,
                            profissionais_stats_conversao=profissionais_stats_conversao,

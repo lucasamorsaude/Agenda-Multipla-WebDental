@@ -134,12 +134,68 @@
         </div>
         {% endif %}
 
-        {% if profissionais_stats_confirmacao %}
+         {% if profissionais_stats_confirmacao %}
         <div class="mb-4">
-            <p><button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRankings" aria-expanded="false" aria-controls="collapseRankings">Mostrar/Ocultar Rankings de Profissionais</button></p>
+            <p><button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRankings" aria-expanded="true" aria-controls="collapseRankings">Mostrar/Ocultar Rankings de Profissionais</button></p>
             <div class="collapse show" id="collapseRankings">
                 <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <h5>Confirmação por Profissional</h5>
+                        <ul class="list-group">
+                            {% for prof in profissionais_stats_confirmacao %}
+                            <li class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1 truncate-text">{{ prof.profissional }}</h6>
+                                    <small>{{ prof.taxa_confirmacao }}</small>
+                                </div>
+                                {% set percent = prof.percent_confirmacao %}
+                                {% set color_class = 'bg-success' if percent >= 80 else 'bg-warning' if percent >= 60 else 'bg-danger' %}
+                                <div class="progress mt-1" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+                                    <div class="progress-bar {{ color_class }}" style="width: {{ percent }}%;">{{ prof.taxa_confirmacao }}</div>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
                     </div>
+
+                    <div class="col-md-4 mb-3">
+                        <h5>Ocupação por Profissional</h5>
+                        <ul class="list-group">
+                            {% for prof in profissionais_stats_ocupacao %}
+                            <li class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1 truncate-text">{{ prof.profissional }}</h6>
+                                    <small>{{ prof.taxa_ocupacao }}</small>
+                                </div>
+                                {% set percent = prof.percent_ocupacao %}
+                                {% set color_class = 'bg-success' if percent >= 80 else 'bg-warning' if percent >= 60 else 'bg-danger' %}
+                                <div class="progress mt-1" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+                                    <div class="progress-bar {{ color_class }}" style="width: {{ percent }}%;">{{ prof.taxa_ocupacao }}</div>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <h5>Conversão por Profissional</h5>
+                        <ul class="list-group">
+                            {% for prof in profissionais_stats_conversao %}
+                            <li class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1 truncate-text">{{ prof.profissional }}</h6>
+                                    <small>{{ prof.taxa_conversao }}</small>
+                                </div>
+                                {% set percent = prof.percent_conversao %}
+                                {% set color_class = 'bg-success' if percent >= 80 else 'bg-warning' if percent >= 60 else 'bg-danger' %}
+                                <div class="progress mt-1" role="progressbar" aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100">
+                                    <div class="progress-bar {{ color_class }}" style="width: {{ percent }}%;">{{ prof.taxa_conversao }}</div>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
         {% endif %}
