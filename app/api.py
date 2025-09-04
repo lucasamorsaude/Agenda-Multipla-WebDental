@@ -2,6 +2,7 @@
 
 import os
 from flask import Blueprint, jsonify, request, session
+from flask_login import login_user, logout_user, current_user, login_required
 from . import services
 
 bp = Blueprint('api', __name__, url_prefix='/api')
@@ -52,3 +53,15 @@ def appointment_details(appointment_id):
     except Exception as e:
         print(f"Erro na API de detalhes: {e}")
         return jsonify({'error': 'Ocorreu um erro interno ao buscar os detalhes.'}), 500
+    
+
+@bp.route('/my_units')
+@login_required
+def my_units_api():
+    """Retorna a lista de unidades permitidas para o usuário logado."""
+    # Para o superadmin, session['unidades'] terá todas as unidades
+    if 'unidades' in session:
+        # Formata os dados no formato que o JavaScript espera: [{'id': ..., 'name': ...}]
+        units_list = [{'id': uid, 'name': name} for uid, name in session['unidades'].items()]
+        return jsonify(units_list)
+    return jsonify([])

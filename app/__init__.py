@@ -26,7 +26,7 @@ def create_app():
 
     login.init_app(app)
 
-    from . import routes, api, cache, auth, user
+    from . import routes, api, cache, auth, user, superadmin
     
     # 2. Registra todos os blueprints na aplicação
     app.register_blueprint(routes.bp)
@@ -34,6 +34,7 @@ def create_app():
     app.register_blueprint(cache.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(user.bp) 
+    app.register_blueprint(superadmin.bp)
 
 
 
