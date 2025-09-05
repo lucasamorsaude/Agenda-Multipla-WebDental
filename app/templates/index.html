@@ -341,6 +341,7 @@
                 
                 const formData = new FormData();
                 formData.append('selected_date_force_update', document.getElementById('selected_date').value);
+                formData.append('unit_id', button.dataset.unitId); 
                 // O url_for aqui vai funcionar porque o Flask renderiza o template com o endereço correto
                 fetch("{{ url_for('cache.force_update_day_cache_sync') }}", {
                     method: 'POST',
