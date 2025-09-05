@@ -72,9 +72,9 @@ def dashboard():
                 global_summary = {
                     'total_agendado_geral': total_agendado_global,
                     'total_atendidos_global': total_atendidos_global,
-                    'taxa_confirmacao_global': f"{(total_confirmado_global / total_agendado_global * 100):.0f}%" if total_agendado_global > 0 else "0%",
-                    'taxa_ocupacao_global': f"{(total_agendado_global / total_slots_global * 100):.0f}%" if total_slots_global > 0 else "0%",
-                    'taxa_conversao_global': f"{(total_atendidos_global / total_agendado_global * 100):.0f}%" if total_agendado_global > 0 else "0%"
+                    'taxa_confirmacao_global': f"{(total_confirmado_global / total_agendado_global * 100):.2f}%" if total_agendado_global > 0 else "0%",
+                    'taxa_ocupacao_global': f"{(total_agendado_global / total_slots_global * 100):.2f}%" if total_slots_global > 0 else "0%",
+                    'taxa_conversao_global': f"{(total_atendidos_global / total_agendado_global * 100):.2f}%" if total_agendado_global > 0 else "0%"
                 }
 
                 # Calcula métricas por unidade
@@ -91,12 +91,12 @@ def dashboard():
                         'agendados': agendados,
                         'atendidos': atendidos,
                         'confirmacao_numeric': (confirmados / agendados * 100) if agendados > 0 else 0,
-                        'confirmacao': f"{(confirmados / agendados * 100):.0f}%" if agendados > 0 else "0%",
+                        'confirmacao': f"{(confirmados / agendados * 100):.2f}%" if agendados > 0 else "0%",
                         'nao_compareceu': faltosos,
                         'ocupacao_numeric': (agendados / total_slots * 100) if total_slots > 0 else 0,
-                        'ocupacao': f"{(agendados / total_slots * 100):.0f}%" if total_slots > 0 else "0%",
+                        'ocupacao': f"{(agendados / total_slots * 100):.2f}%" if total_slots > 0 else "0%",
                         'conversao_numeric': (atendidos / agendados * 100) if agendados > 0 else 0,
-                        'conversao': f"{(atendidos / agendados * 100):.0f}%" if agendados > 0 else "0%"
+                        'conversao': f"{(atendidos / agendados * 100):.2f}%" if agendados > 0 else "0%"
                     })
                 
         except Exception as e:

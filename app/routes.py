@@ -123,14 +123,14 @@ def index():
                 summary_metrics = {
                     'total_agendado_geral': total_ocupados,
                     'total_confirmado_geral': total_confirmado_geral,
-                    'percentual_confirmacao': f"{(total_confirmado_geral / total_ocupados * 100):.0f}%" if total_ocupados > 0 else "0%",
+                    'percentual_confirmacao': f"{(total_confirmado_geral / total_ocupados * 100):.2f}%" if total_ocupados > 0 else "0%",
                     'total_ocupados': total_ocupados,
                     'total_slots_disponiveis': total_slots_disponiveis,
-                    'percentual_ocupacao': f"{(total_ocupados / total_slots_disponiveis * 100):.0f}%" if total_slots_disponiveis > 0 else "0%"
+                    'percentual_ocupacao': f"{(total_ocupados / total_slots_disponiveis * 100):.2f}%" if total_slots_disponiveis > 0 else "0%"
                 }
                 conversion_data_for_selected_day = {
                     'total_atendidos': total_atendidos,
-                    'conversion_rate': f"{(total_atendidos / total_ocupados * 100):.0f}%" if total_ocupados > 0 else "0%"
+                    'conversion_rate': f"{(total_atendidos / total_ocupados * 100):.2f}%" if total_ocupados > 0 else "0%"
                 }
 
                 # 2. RANKINGS POR PROFISSIONAL
@@ -148,11 +148,11 @@ def index():
 
                     stats_list.append({
                         'profissional': profissional,
-                        'taxa_confirmacao': f"{taxa_conf_num:.0f}%",
+                        'taxa_confirmacao': f"{taxa_conf_num:.2f}%",
                         'percent_confirmacao': taxa_conf_num,
-                        'taxa_ocupacao': f"{taxa_ocup_num:.0f}%",
+                        'taxa_ocupacao': f"{taxa_ocup_num:.2f}%",
                         'percent_ocupacao': taxa_ocup_num,
-                        'taxa_conversao': f"{taxa_conv_num:.0f}%",
+                        'taxa_conversao': f"{taxa_conv_num:.2f}%",
                         'percent_conversao': taxa_conv_num
                     })
 
