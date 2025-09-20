@@ -43,84 +43,95 @@ def _login_and_get_units(session, username, password, target_unit_name):
 
 def _build_dynamic_schedule(work_shifts, booked_appointments, medico_chave):
     """
-    VERSÃO FINAL: Gera a grade de horários usando o "Método do Grid",
-    e aplica um filtro inteligente para mostrar slots disponíveis padrão e "encaixes".
+    VERSÃO 2 CORRIGIDA: Respeita a duração dos agendamentos para não criar
+    slots "Disponível" em horários já ocupados.
     """
     final_schedule = []
+    
+    # Etapa 1: Mapear todos os "slices" de tempo que já estão ocupados
+    GRID_RESOLUTION_MINUTES = 5 # Usar uma resolução fina para marcar o tempo ocupado
+    occupied_slices = set()
+
+    # Define a duração padrão a ser usada se um agendamento não tiver uma específica
+    default_duration_for_booked = 15 
+    if work_shifts:
+        default_duration_for_booked = int(work_shifts[0].get('duracao', 15))
+
+    for appt in booked_appointments:
+        try:
+            start_time_str = appt.get('hora_agenda')
+            start_dt = datetime.strptime(start_time_str, '%H:%M')
+            
+            # Pega a duração do agendamento, ou usa um padrão se não estiver definida
+            duration = int(appt.get('duracao_agenda', default_duration_for_booked))
+            
+            # Calcula quantos "slices" de 5 minutos o agendamento ocupa
+            num_slices = duration // GRID_RESOLUTION_MINUTES
+            if duration % GRID_RESOLUTION_MINUTES > 0:
+                num_slices += 1 # Arredonda para cima
+            
+            # Adiciona cada slice ao conjunto de horários ocupados
+            for i in range(num_slices):
+                slice_time = (start_dt + timedelta(minutes=i * GRID_RESOLUTION_MINUTES)).strftime('%H:%M')
+                occupied_slices.add(slice_time)
+
+        except (ValueError, TypeError, KeyError):
+            # Ignora agendamentos com formato de hora inválido
+            continue
+
+    # Etapa 2: Adicionar todos os agendamentos reais à lista final. Eles são a prioridade.
+    final_schedule.extend(booked_appointments)
+
+    # Se não houver turnos, não podemos gerar horários disponíveis
     if not work_shifts:
+        final_schedule.sort(key=lambda x: x.get('hora_agenda', ''))
         return final_schedule
 
-    default_duration = int(work_shifts[0].get('duracao', 15))
-    GRID_RESOLUTION_MINUTES = 5
-    
-    # 1. CRIA O GRID COMPLETO (sem alterações)
-    full_day_grid = {}
+    # Define a duração padrão para os slots disponíveis
+    default_duration_for_available = int(work_shifts[0].get('duracao', 15))
+
+    # Etapa 3: Gerar os horários disponíveis, verificando se não estão ocupados
     for shift in work_shifts:
         try:
             start_time = datetime.strptime(shift['horario_inicio'], '%H:%M:%S')
             end_time = datetime.strptime(shift['horario_fim'], '%H:%M:%S')
             current_time = start_time
+
             while current_time < end_time:
                 time_str = current_time.strftime('%H:%M')
-                full_day_grid[time_str] = {
-                    'hora_agenda': time_str, 'situacao': 'Disponível', 'nome': '',
-                    'chave': f"vago_{medico_chave}_{time_str}", 'cd_paciente': None,
-                    'duracao_agenda': GRID_RESOLUTION_MINUTES
-                }
-                current_time += timedelta(minutes=GRID_RESOLUTION_MINUTES)
+                
+                # Apenas adiciona um slot "Disponível" se ele NÃO estiver no conjunto de ocupados
+                if time_str not in occupied_slices:
+                    # Adiciona apenas os horários "padrão" (múltiplos da duração)
+                    if current_time.minute % default_duration_for_available == 0:
+                        final_schedule.append({
+                            'hora_agenda': time_str, 
+                            'situacao': 'Disponível', 
+                            'nome': '',
+                            'chave': f"vago_{medico_chave}_{time_str}", 
+                            'cd_paciente': None,
+                            'duracao_agenda': default_duration_for_available
+                        })
+                
+                # Avança para o próximo horário padrão
+                current_time += timedelta(minutes=default_duration_for_available)
         except (ValueError, TypeError):
             continue
-
-    # 2. "COLA" OS AGENDAMENTOS REAIS (sem alterações)
-    for appointment in booked_appointments:
-        start_time_str = appointment.get('hora_agenda')
-        duration = int(appointment.get('duracao_agenda', default_duration))
-        if start_time_str in full_day_grid:
-            full_day_grid[start_time_str] = appointment
-            slots_to_occupy = duration // GRID_RESOLUTION_MINUTES
-            start_dt = datetime.strptime(start_time_str, '%H:%M')
-            for i in range(1, slots_to_occupy):
-                next_slot_time = (start_dt + timedelta(minutes=i * GRID_RESOLUTION_MINUTES)).strftime('%H:%M')
-                if next_slot_time in full_day_grid:
-                    full_day_grid[next_slot_time] = 'OCCUPIED'
-
-    # 3. MONTA A LISTA FINAL COM O FILTRO INTELIGENTE
-    sorted_times = sorted(full_day_grid.keys())
-    for i, time_key in enumerate(sorted_times):
-        slot = full_day_grid[time_key]
-        
-        # Pula os slots que estão no meio de um agendamento longo
-        if slot == 'OCCUPIED':
-            continue
-
-        # Se o slot for um agendamento real, sempre adiciona ele
-        if slot.get('cd_paciente') is not None:
-            final_schedule.append(slot)
-            continue
-
-        # Se for um slot disponível, aplica o filtro inteligente
-        if slot.get('situacao') == 'Disponível':
-            minutos = int(time_key.split(':')[1])
             
-            # REGRA 1: É um horário padrão (múltiplo de 15 min)?
-            is_standard_slot = (minutos % default_duration == 0)
-            
-            # REGRA 2: Ele está logo antes de um agendamento real?
-            is_before_booked_slot = False
-            # Verifica se não é o último item da lista para evitar erro
-            if i + 1 < len(sorted_times):
-                next_time_key = sorted_times[i+1]
-                next_slot = full_day_grid[next_time_key]
-                # O próximo slot é um agendamento real (e não 'OCCUPIED' ou 'Disponível')?
-                if next_slot != 'OCCUPIED' and next_slot.get('cd_paciente') is not None:
-                    is_before_booked_slot = True
-            
-            # Se qualquer uma das regras for verdadeira, adiciona o slot
-            if is_standard_slot or is_before_booked_slot:
-                slot['duracao_agenda'] = default_duration
-                final_schedule.append(slot)
-            
-    return final_schedule
+    # Etapa 4: Remove duplicados e ordena a lista final
+    # (Pode haver duplicados se um agendamento real coincidir com um horário padrão)
+    final_unique_schedule = []
+    seen_hours = set()
+    # Prioriza os agendamentos reais sobre os disponíveis na ordenação
+    final_schedule.sort(key=lambda x: (x.get('hora_agenda', ''), x.get('cd_paciente') is None))
+
+    for item in final_schedule:
+        hour = item.get('hora_agenda')
+        if hour not in seen_hours:
+            final_unique_schedule.append(item)
+            seen_hours.add(hour)
+
+    return final_unique_schedule
 
 def get_webdental_data(username, password, target_unit_name, selected_date_str):
     # ... (lógica de cache continua a mesma) ...
@@ -297,6 +308,8 @@ def get_webdental_data_live(username, password, target_unit_name, selected_date_
             "agendas_completas": all_professionals_schedule,
             "unidades": all_units
         }
+
+
 # --- FUNÇÃO QUE FALTAVA ADICIONADA AQUI ---
 def fetch_single_appointment_details(username, password, target_unit_name, selected_date_str, appointment_id_to_find):
     """
