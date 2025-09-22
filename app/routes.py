@@ -112,39 +112,48 @@ def index():
                 df = pd.DataFrame(all_appointments_for_df)
                 df_ocupados = df[df['status'] != 'Disponível']
                 
-                total_slots_disponiveis = len(df)
-                total_ocupados = len(df_ocupados)
+                # --- MÉTRICA DE OCUPAÇÃO (BASEADA EM MINUTOS) ---
+                total_minutos_disponiveis = df['duration'].sum()
+                total_minutos_ocupados = df_ocupados['duration'].sum()
+
+                # --- MÉTRICAS DE AGENDAMENTO (BASEADAS EM CONTAGEM) ---
+                total_agendamentos_count = len(df_ocupados)
                 total_confirmado_geral = len(df_ocupados[df_ocupados['status'] == 'Confirmado'])
                 
-                # Define os status que contam como "atendido" para a conversão
                 status_atendido = ['Atendido (Obs)', 'Atendido com procedimento', 'Pagamento Realizado']
                 total_atendidos = len(df_ocupados[df_ocupados['status'].isin(status_atendido)])
 
                 summary_metrics = {
-                    'total_agendado_geral': total_ocupados,
+                    'total_agendado_geral': total_agendamentos_count,
                     'total_confirmado_geral': total_confirmado_geral,
-                    'percentual_confirmacao': f"{(total_confirmado_geral / total_ocupados * 100):.2f}%" if total_ocupados > 0 else "0%",
-                    'total_ocupados': total_ocupados,
-                    'total_slots_disponiveis': total_slots_disponiveis,
-                    'percentual_ocupacao': f"{(total_ocupados / total_slots_disponiveis * 100):.2f}%" if total_slots_disponiveis > 0 else "0%"
+                    'percentual_confirmacao': f"{(total_confirmado_geral / total_agendamentos_count * 100):.2f}%" if total_agendamentos_count > 0 else "0%",
+                    
+                    # As chaves foram mantidas para compatibilidade, mas os valores agora refletem minutos
+                    'total_ocupados': total_minutos_ocupados,
+                    'total_slots_disponiveis': total_minutos_disponiveis,
+                    'percentual_ocupacao': f"{(total_minutos_ocupados / total_minutos_disponiveis * 100):.2f}%" if total_minutos_disponiveis > 0 else "0%"
                 }
                 conversion_data_for_selected_day = {
                     'total_atendidos': total_atendidos,
-                    'conversion_rate': f"{(total_atendidos / total_ocupados * 100):.2f}%" if total_ocupados > 0 else "0%"
+                    'conversion_rate': f"{(total_atendidos / total_agendamentos_count * 100):.2f}%" if total_agendamentos_count > 0 else "0%"
                 }
 
                 # 2. RANKINGS POR PROFISSIONAL
                 stats_list = []
                 # Agrupa os dados por profissional para calcular as métricas individuais
                 for profissional, group in df.groupby('profissional_nome'):
-                    total_slots_prof = len(group)
-                    ocupados_prof = len(group[group['status'] != 'Disponível'])
-                    confirmados_prof = len(group[group['status'] == 'Confirmado'])
-                    atendidos_prof = len(group[group['status'].isin(status_atendido)])
+                    # Ocupação por profissional (baseado em minutos)
+                    total_minutos_prof = group['duration'].sum()
+                    minutos_ocupados_prof = group[group['status'] != 'Disponível']['duration'].sum()
                     
-                    taxa_conf_num = (confirmados_prof / ocupados_prof * 100) if ocupados_prof > 0 else 0
-                    taxa_ocup_num = (ocupados_prof / total_slots_prof * 100) if total_slots_prof > 0 else 0
-                    taxa_conv_num = (atendidos_prof / ocupados_prof * 100) if ocupados_prof > 0 else 0
+                    # Outras métricas por profissional (baseado em contagem)
+                    ocupados_prof_count = len(group[group['status'] != 'Disponível'])
+                    confirmados_prof_count = len(group[group['status'] == 'Confirmado'])
+                    atendidos_prof_count = len(group[group['status'].isin(status_atendido)])
+                    
+                    taxa_conf_num = (confirmados_prof_count / ocupados_prof_count * 100) if ocupados_prof_count > 0 else 0
+                    taxa_ocup_num = (minutos_ocupados_prof / total_minutos_prof * 100) if total_minutos_prof > 0 else 0
+                    taxa_conv_num = (atendidos_prof_count / ocupados_prof_count * 100) if ocupados_prof_count > 0 else 0
 
                     stats_list.append({
                         'profissional': profissional,
@@ -169,20 +178,20 @@ def index():
             print(f"Ocorreu um erro ao buscar ou processar os dados: {e}")
             
     return render_template('index.html', 
-                           selected_date=selected_date, 
-                           last_updated_formatted=last_updated_formatted,
-                           summary_metrics=summary_metrics, 
-                           agendas=agendas, 
-                           table_headers=table_headers,
-                           table_index=table_index, 
-                           table_body=table_body, 
-                           conversion_data_for_selected_day=conversion_data_for_selected_day,
-                           status_styles=status_styles, 
-                           default_duration=default_duration,
-                           profissionais_stats_confirmacao=profissionais_stats_confirmacao,
-                           profissionais_stats_ocupacao=profissionais_stats_ocupacao,
-                           profissionais_stats_conversao=profissionais_stats_conversao,
-                           agenda_url_template="http://exemplo.com/{}/{}")
+                            selected_date=selected_date, 
+                            last_updated_formatted=last_updated_formatted,
+                            summary_metrics=summary_metrics, 
+                            agendas=agendas, 
+                            table_headers=table_headers,
+                            table_index=table_index, 
+                            table_body=table_body, 
+                            conversion_data_for_selected_day=conversion_data_for_selected_day,
+                            status_styles=status_styles, 
+                            default_duration=default_duration,
+                            profissionais_stats_confirmacao=profissionais_stats_confirmacao,
+                            profissionais_stats_ocupacao=profissionais_stats_ocupacao,
+                            profissionais_stats_conversao=profissionais_stats_conversao,
+                            agenda_url_template="http://exemplo.com/{}/{}")
 
 # --- FUNÇÃO ATUALIZADA ---
 @bp.route('/switch_unit/<direction>')
