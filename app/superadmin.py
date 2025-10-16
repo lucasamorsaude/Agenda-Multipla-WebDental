@@ -1,5 +1,3 @@
-# app/superadmin.py
-
 import os
 from flask import Blueprint, render_template, request, session
 from flask_login import login_required, current_user
@@ -23,6 +21,7 @@ def dashboard():
     
     global_summary = {}
     units_stats = []
+    default_duration = 15
 
     if request.method == 'POST':
         try:
@@ -60,43 +59,56 @@ def dashboard():
                     lambda row: "Faltou" if row.get('faltou') == 'F' else status_map.get(row['situacao'], "Disponível" if row.get('situacao') == "Disponível" else f"Status '{row.get('situacao')}'"),
                     axis=1
                 )
+                
+                # Adiciona e trata a coluna de duração
+                full_df['duration'] = pd.to_numeric(full_df['duracao_agenda'], errors='coerce').fillna(default_duration).astype(int)
+
                 df_ocupados = full_df[full_df['status_legivel'] != 'Disponível']
                 status_atendido = ['Atendido (Obs)', 'Atendido com procedimento', 'Pagamento Realizado']
                 
-                # Calcula métricas globais
-                total_agendado_global = len(df_ocupados)
+                # --- MÉTRICAS GLOBAIS ---
+                # Por contagem (para confirmação e conversão)
+                total_agendado_global_count = len(df_ocupados)
                 total_atendidos_global = len(df_ocupados[df_ocupados['status_legivel'].isin(status_atendido)])
                 total_confirmado_global = len(df_ocupados[df_ocupados['status_legivel'] == 'Confirmado'])
-                total_slots_global = len(full_df)
+                
+                # Por minutos (para ocupação)
+                total_minutos_disponiveis_global = full_df['duration'].sum()
+                total_minutos_ocupados_global = df_ocupados['duration'].sum()
 
                 global_summary = {
-                    'total_agendado_geral': total_agendado_global,
+                    'total_agendado_geral': total_agendado_global_count,
                     'total_atendidos_global': total_atendidos_global,
-                    'taxa_confirmacao_global': f"{(total_confirmado_global / total_agendado_global * 100):.2f}%" if total_agendado_global > 0 else "0%",
-                    'taxa_ocupacao_global': f"{(total_agendado_global / total_slots_global * 100):.2f}%" if total_slots_global > 0 else "0%",
-                    'taxa_conversao_global': f"{(total_atendidos_global / total_agendado_global * 100):.2f}%" if total_agendado_global > 0 else "0%"
+                    'taxa_confirmacao_global': f"{(total_confirmado_global / total_agendado_global_count * 100):.2f}%" if total_agendado_global_count > 0 else "0%",
+                    'taxa_ocupacao_global': f"{(total_minutos_ocupados_global / total_minutos_disponiveis_global * 100):.2f}%" if total_minutos_disponiveis_global > 0 else "0%",
+                    'taxa_conversao_global': f"{(total_atendidos_global / total_agendado_global_count * 100):.2f}%" if total_agendado_global_count > 0 else "0%"
                 }
 
-                # Calcula métricas por unidade
+                # --- MÉTRICAS POR UNIDADE ---
                 for unit_name, group in full_df.groupby('unit_name'):
                     group_ocupados = group[group['status_legivel'] != 'Disponível']
-                    agendados = len(group_ocupados)
+                    
+                    # Por contagem
+                    agendados_count = len(group_ocupados)
                     atendidos = len(group_ocupados[group_ocupados['status_legivel'].isin(status_atendido)])
                     confirmados = len(group_ocupados[group_ocupados['status_legivel'] == 'Confirmado'])
                     faltosos = len(group_ocupados[group_ocupados['status_legivel'] == 'Faltou'])
-                    total_slots = len(group)
+                    
+                    # Por minutos
+                    total_minutos_unit = group['duration'].sum()
+                    minutos_ocupados_unit = group_ocupados['duration'].sum()
 
                     units_stats.append({
                         'name': unit_name,
-                        'agendados': agendados,
+                        'agendados': agendados_count,
                         'atendidos': atendidos,
-                        'confirmacao_numeric': (confirmados / agendados * 100) if agendados > 0 else 0,
-                        'confirmacao': f"{(confirmados / agendados * 100):.2f}%" if agendados > 0 else "0%",
+                        'confirmacao_numeric': (confirmados / agendados_count * 100) if agendados_count > 0 else 0,
+                        'confirmacao': f"{(confirmados / agendados_count * 100):.2f}%" if agendados_count > 0 else "0%",
                         'nao_compareceu': faltosos,
-                        'ocupacao_numeric': (agendados / total_slots * 100) if total_slots > 0 else 0,
-                        'ocupacao': f"{(agendados / total_slots * 100):.2f}%" if total_slots > 0 else "0%",
-                        'conversao_numeric': (atendidos / agendados * 100) if agendados > 0 else 0,
-                        'conversao': f"{(atendidos / agendados * 100):.2f}%" if agendados > 0 else "0%"
+                        'ocupacao_numeric': (minutos_ocupados_unit / total_minutos_unit * 100) if total_minutos_unit > 0 else 0,
+                        'ocupacao': f"{(minutos_ocupados_unit / total_minutos_unit * 100):.2f}%" if total_minutos_unit > 0 else "0%",
+                        'conversao_numeric': (atendidos / agendados_count * 100) if agendados_count > 0 else 0,
+                        'conversao': f"{(atendidos / agendados_count * 100):.2f}%" if agendados_count > 0 else "0%"
                     })
                 
         except Exception as e:

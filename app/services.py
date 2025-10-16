@@ -21,7 +21,6 @@ CD_FILIAL = "275"
 CHAVE_USUARIO = "L27500020240108110613"
 
 def _login_and_get_units(session, username, password, target_unit_name):
-    # ... (esta função continua a mesma) ...
     print("[DEBUG] ETAPA 1.1: Acessando página de login inicial...")
     session.get(URL_LOGIN_PAGE)
     print("[DEBUG] ETAPA 1.2: Buscando lista de unidades...")
@@ -133,6 +132,7 @@ def _build_dynamic_schedule(work_shifts, booked_appointments, medico_chave):
 
     return final_unique_schedule
 
+
 def get_webdental_data(username, password, target_unit_name, selected_date_str):
     # ... (lógica de cache continua a mesma) ...
     cache_key = f"{target_unit_name.replace(' ', '_')}_{selected_date_str}"
@@ -219,7 +219,27 @@ def get_webdental_data(username, password, target_unit_name, selected_date_str):
                     # Ignora regras com formato de data inválido ou chaves faltando
                     continue
             
-            payload_agenda = {"cadeira": {"cadeira": 4, "cadeiraValue": 1, "cadeiraValueSelect": 0}, "cd_filial": CD_FILIAL, "chaveUsuario": CHAVE_USUARIO, "data_Hoje": data_formatada_br, "data_Hoje_System": data_formatada_sys, "data_a": data_formatada_br, "data_a_formt": data_formatada_sys, "data_c": data_formatada_br, "dia_semana": dia_semana, "filial": int(CD_FILIAL), "medico": medico_chave, "medicosChave": [m['chave'] for m in medicos], "rotaAcao": "agendaSelecDr", "unidade": unit_id}
+            payload_agenda = {
+                    "cadeira": 
+                    {
+                        "cadeira": 4, 
+                        "cadeiraValue": 1, 
+                        "cadeiraValueSelect": 0
+                    }, 
+                    "cd_filial": CD_FILIAL, 
+                    "chaveUsuario": CHAVE_USUARIO, 
+                    "data_Hoje": data_formatada_br, 
+                    "data_Hoje_System": data_formatada_sys, 
+                    "data_a": data_formatada_br, 
+                    "data_a_formt": data_formatada_sys, 
+                    "data_c": data_formatada_br, 
+                    "dia_semana": dia_semana, 
+                    "filial": int(CD_FILIAL), 
+                    "medico": medico_chave, 
+                    "medicosChave": [m['chave'] for m in medicos], 
+                    "rotaAcao": "agendaSelecDr", 
+                    "unidade": unit_id
+                    }
             
             agendamentos = []
             try:
